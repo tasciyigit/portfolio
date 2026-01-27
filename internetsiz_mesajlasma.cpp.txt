@@ -1,6 +1,3 @@
-// Internetsiz Mesajlaşma Cihazı - C++ Kodu
-// Tüm kodunu bu dosyanın içine yapıştır.
-// Burada istediğin gibi HTML, uzun string vs. kullanabilirsin; site yapısı bozulmaz.
 
 #include <WiFi.h>
 #include <WebServer.h>
