@@ -21,6 +21,7 @@
 
       <div class="header-buttons">
         <a href="index.html" class="nav-btn active"><i class="fas fa-list-check"></i> Projelerim</a>
+        <a href="uygulamalar.html" class="nav-btn"><i class="fas fa-layer-group"></i> Uygulamalar</a>
         <a href="3d.html" class="nav-btn"><i class="fas fa-cube"></i> 3D Baskılar</a>
         <a href="hakkimda.html" class="nav-btn"><i class="fas fa-user-circle"></i> Hakkımda</a>
         <a href="iletisim.html" class="nav-btn"><i class="fas fa-paper-plane"></i> İletişim</a>
@@ -33,6 +34,13 @@
       <h2 class="section-title">Projelerim</h2>
 
       <div class="projects-grid">
+
+        <div class="project-card" onclick="openModal('modal-wifi-msg')">
+          <div class="card-icon"><i class="fas fa-wifi"></i></div>
+          <h3>Internetsiz Mesajlaşma Cihazı</h3>
+          <p>Nerede olursan ol 50 metre mesafede mesajlaşma.</p>
+          <button class="details-btn">Projeyi İncele <i class="fas fa-arrow-right"></i></button>
+        </div>
 
         <div class="project-card" onclick="openModal('modal-3')">
           <div class="card-icon"><i class="fas fa-key"></i></div>
@@ -163,15 +171,7 @@ if __name__ == "__main__":
         </div>
       </div>
 
-      <div class="project-detail-section">
-        <h3><i class="fas fa-project-diagram"></i> Devre Şeması</h3>
-        <div class="schema-container">
-          <img src="images/servo_motor_schema.jpg" alt="Potansiyometre ve Servo Motor Bağlantı Şeması">
-          <p class="schema-desc">Potansiyometrenin orta pini **Arduino A0** analog girişine, yan pinleri **5V ve
-            GND**'ye bağlanmıştır. Servo Motor'un veri (sarı) pini **Arduino Dijital 9**'a, güç ve toprak pinleri uygun
-            şekilde bağlanmıştır.</p>
-        </div>
-      </div>
+
 
       <div class="project-detail-section">
         <h3><i class="fas fa-code"></i> Kaynak Kod (C++)</h3>
@@ -453,6 +453,57 @@ void sureBelirleEkrani() {
     </div>
   </div>
 
+
+  <div id="modal-wifi-msg" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('modal-wifi-msg')">&times;</span>
+      <h2>Internetsiz Mesajlaşma Cihazı</h2>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-bullseye"></i> Amaç</h3>
+        <p>Acil durumlarda, köy, dağ gibi internetin çekmediği alanlarda veya internet altyapısının olmadığı yerlerde
+          haberleşmeyi sağlamak. Cihaz kendi Axess Point'ini (Erişim Noktası) açarak, telefon veya bilgisayarların bu
+          ağa bağlanmasını ve cihazın IP adresi üzerinden web arayüzüne girerek diğer kullanıcılarla mesajlaşmasını
+          sağlar. Tamamen yerel bir ağ üzerinde çalışır, internet gerektirmez.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-video"></i> Video</h3>
+        <div class="video-container">
+          <!-- Placeholder video -->
+          <video controls>
+            <source src="" type="video/mp4">
+            Video hazırlanıyor...
+          </video>
+        </div>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-cogs"></i> Çalışma Mantığı</h3>
+        <p>Cihaz çalıştırıldığında bir Wi-Fi ağı yayını yapar. Kullanıcılar bu ağa şifre ile bağlanır. Ardından web
+          tarayıcısına cihazın IP adresini girerek (örn. 192.168.4.1) özel olarak tasarlanmış mesajlaşma arayüzüne
+          erişirler. Bu arayüz üzerinden ağa bağlı tüm cihazlar birbirleriyle anlık olarak yazışabilir.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-project-diagram"></i> Şema</h3>
+        <div class="schema-container">
+          <!-- Placeholder for schema image -->
+          <img src="" alt="Devre Şeması"
+            style="min-height: 200px; background: #eee; display: flex; align-items: center; justify-content: center; color: #555;"
+            onload="if(this.src=='')this.style.display='none'">
+          <p class="schema-desc">Devre şeması buraya eklenecek.</p>
+        </div>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-code"></i> Kaynak Kod (C++)</h3>
+        <pre><code class="language-cpp">
+<!-- C++ Kodu buraya gelecek -->
+        </code></pre>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>

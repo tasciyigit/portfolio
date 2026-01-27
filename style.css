@@ -453,3 +453,83 @@ code {
 .schema-container img:hover {
     opacity: 0.8;
 }
+
+/* ================= SPLIT MODAL (Uygulamalar İçin) ================= */
+.split-container {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.split-side {
+    flex: 1;
+    background-color: #252525;
+    padding: 30px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid #333;
+    transition: all 0.3s;
+}
+
+.split-side:hover {
+    border-color: #00d2be;
+    transform: translateY(-5px);
+}
+
+/* Ayırıcı Çizgi (İsteğe bağlı, zaten gap ve kutu yapısı ayırıyor ama renklendirebiliriz) */
+.windows-side {
+    border-top: 4px solid #00adef;
+    /* Windows Mavisi */
+}
+
+.mac-side {
+    border-top: 4px solid #999;
+    /* Apple Grisi/Gümüş */
+}
+
+.os-icon {
+    font-size: 4rem;
+    margin-bottom: 15px;
+    color: #e0e0e0;
+}
+
+.windows-side .os-icon {
+    color: #00adef;
+}
+
+.mac-side .os-icon {
+    color: #fff;
+}
+
+.split-side h4 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: #fff;
+}
+
+.status-text {
+    color: #aaa;
+    font-style: italic;
+}
+
+.download-btn {
+    margin-top: 15px;
+    width: 100%;
+    cursor: pointer;
+    background-color: #00d2be;
+    color: #121212 !important;
+    /* nav-btn'den gelen override */
+    border: none;
+}
+
+.download-btn:hover {
+    background-color: #fff;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+}
+
+/* Mobil Uyumluluk */
+@media (max-width: 768px) {
+    .split-container {
+        flex-direction: column;
+    }
+}
