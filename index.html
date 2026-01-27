@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yiğit Taşçı | Projelerim</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&family=Source+Code+Pro:wght+400;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+
+  <header>
+    <div class="container">
+      <h1>Yiğit<span class="highlight">Taşçı</span>.</h1>
+      <p>Elektronik & Yazılım Projeleri</p>
+
+      <div class="header-buttons">
+        <a href="index.html" class="nav-btn active"><i class="fas fa-list-check"></i> Projelerim</a>
+        <a href="uygulamalar.html" class="nav-btn"><i class="fas fa-layer-group"></i> Uygulamalar</a>
+        <a href="3d.html" class="nav-btn"><i class="fas fa-cube"></i> 3D Baskılar</a>
+        <a href="hakkimda.html" class="nav-btn"><i class="fas fa-user-circle"></i> Hakkımda</a>
+        <a href="iletisim.html" class="nav-btn"><i class="fas fa-paper-plane"></i> İletişim</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="projects-section">
+    <div class="container">
+      <h2 class="section-title">Projelerim</h2>
+
+      <div class="projects-grid">
+
+        <div class="project-card" onclick="openModal('modal-wifi-msg')">
+          <div class="card-icon"><i class="fas fa-wifi"></i></div>
+          <h3>Internetsiz Mesajlaşma Cihazı</h3>
+          <p>Nerede olursan ol 50 metre mesafede mesajlaşma.</p>
+          <button class="details-btn">Projeyi İncele <i class="fas fa-arrow-right"></i></button>
+        </div>
+
+        <div class="project-card" onclick="openModal('modal-3')">
+          <div class="card-icon"><i class="fas fa-key"></i></div>
+          <h3>Python Şifre Kırma Simülasyonu</h3>
+          <p>Brute-force mantığı ile şifre kırma algoritması demosu.</p>
+          <button class="details-btn">Projeyi İncele <i class="fas fa-arrow-right"></i></button>
+        </div>
+        <div class="project-card" onclick="openModal('modal-5')">
+          <div class="card-icon"><i class="fas fa-robot"></i></div>
+          <h3>Şifreli bomba (C++)</h3>
+          <p>Girdiğin süre içerisinde şifreyi bilemesen patlayan Arduino projesi.</p>
+          <button class="details-btn">Projeyi İncele <i class="fas fa-arrow-right"></i></button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>&copy; 2025 Yiğit Taşçı | Proje Portfolyosu</p>
+  </footer>
+
+  <div id="modal-3" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('modal-3')">&times;</span>
+      <h2>Python Şifre Kırma Simülasyonu</h2>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-bullseye"></i> Amaç</h3>
+        <p>Kullanıcının belirlediği şifreyi, olası tüm kombinasyonları (en düşük karakterden en yükseğe doğru) hızlıca
+          deneyerek bulmaya çalışan bir **Brute-Force algoritmasının** çalışma mantığını göstermek. Deneme hızı,
+          kullanılan bilgisayarın işlem gücüne bağlıdır.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-video"></i> Video</h3>
+        <div class="video-container">
+          <video controls>
+            <source src="videos/Adsız tasarım.mp4" type="video/mp4">
+            Tarayıcınız video etiketini desteklemiyor.
+          </video>
+        </div>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-cogs"></i> Çalışma Mantığı</h3>
+        <div class="schema-container">
+          <p class="schema-desc">Bu projede, Python'da `random` kütüphanesi kullanılarak deneme karakterleri (harf ve
+            rakamlar) tanımlanmıştır. Kod, belirlenen şifre uzunluğunda rastgele karakterler üretir ve şifre bulunana
+            kadar denemeye devam eder. Bu simülasyon, kısa ve zayıf şifrelerin ne kadar hızlı bulunabileceğini
+            göstermektedir.</p>
+        </div>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-code"></i> Kaynak Kod (Python)</h3>
+        <pre><code class="language-python">
+# BURAYI DEĞİŞTİR: Python kodunu buraya yapıştır.
+from random import randint
+
+KEYS = [
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+    "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+    "u", "v", "w", "x", "y", "z"
+]
+
+
+def brute_force(password: str) -> None:
+    pwg = ""
+    while pwg != password:
+        pwg = ""
+        for _ in range(len(password)):
+            guess_pass = KEYS[randint(0, len(KEYS) - 1)]
+            pwg = f"{guess_pass}{pwg}"
+            print(f"\rattacking... please wait! {pwg}", end="", flush=True)
+    print()  # newline after carriage-return loop
+    print(f"The pass is: {pwg}")
+
+
+def main() -> None:
+    while True:
+        password = input("Send the password (max 4 chars): ")
+        if len(password) == 0:
+            print("Boş şifre kabul edilmiyor.")
+            continue
+        if len(password) > 4:
+            print("En fazla 4 karakter deneyebilirsin. Lütfen yeniden dene.")
+            continue
+        brute_force(password)
+        again = input("Tekrar denemek ister misin? (yes/no): ").strip().lower()
+        if again not in ("y", "yes"):
+            print("Görüşürüz!")
+            break
+
+
+if __name__ == "__main__":
+    main()
+                </code></pre>
+      </div>
+    </div>
+  </div>
+  <div id="modal-5" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('modal-5')">&times;</span>
+      <h2>Şifreli bomba </h2>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-bullseye"></i> Amaç</h3>
+        <p>Bu proje, Keypad (Tuş Takımı), LCD Ekran ve Arduino Uno kullanılarak geliştirilmiş, **kompleks bir şifreli
+          imha simülasyonudur** (Bomb Defusal Game). Projenin amacı, kullanıcının belirlediği süre ve şifre ile kurulan
+          zamanlayıcıyı devreye sokmak ve geri sayım bitmeden doğru şifreyi girerek sistemi durdurmayı sağlamaktır.</p>
+        <p>Proje, bir Arduino projesinde sıklıkla kullanılan birden fazla temel fonksiyonu bir araya getirir: **Gelişmiş
+          Keypad okuma**, **LCD Ekran üzerinden kullanıcı etkileşimi (kurulum)**, **zamanlayıcı yönetimi (`millis()`)**
+          ve **sesli/görsel geri bildirimler (LED/Buzzer)**.</p>
+        <p>Yanlış şifre girildiğinde süre kısaltılır ve uyarılar verilirken, süre dolduğunda ise görsel ve sesli
+          **'Patlama Efekti'** ile oyun sonlanır. Bu, gerçek dünya kilit sistemlerinin veya oyun tasarımlarının temel
+          mantığını sergiler.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-video"></i> Video</h3>
+        <div class="video-container">
+          <video controls>
+            <source src="Adsız tasarım-3.mp4" type="video/mp4">
+            Tarayıcınız video etiketini desteklemiyor.
+          </video>
+        </div>
+      </div>
+
+
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-code"></i> Kaynak Kod (C++)</h3>
+        <pre><code class="language-cpp">
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Keypad.h>
+
+// --- AYARLAR ---
+LiquidCrystal_I2C lcd(0x27, 16, 2); 
+const int BUZZER = 11; 
+const int KIRMIZI_LED = 12;
+const int YESIL_LED = 10;   
+
+// --- KEYPAD AYARLARI (Klavye Tersliği Düzeltilmiş) ---
+const byte SATIR = 4; 
+const byte SUTUN = 4; 
+byte satirPinleri[SATIR] = {2, 3, 4, 5}; 
+byte sutunPinleri[SUTUN] = {6, 7, 8, 9}; 
+char tuslar[SATIR][SUTUN] = {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'*','0','#','D'}
+};
+Keypad keypad = Keypad( makeKeymap(tuslar), satirPinleri, sutunPinleri, SATIR, SUTUN );
+
+// --- DEĞİŞKENLER ---
+String kuruluSifre = "";
+String girilenSifre = "";
+long kalanSureSaniye = 0;
+unsigned long sonZaman = 0;
+bool oyunAktif = false;
+bool patladi = false;
+bool imhaOldu = false;
+
+
+// YENİ FONKSİYON: BAŞLANGIÇTA BEKLETME
+void ekranBeklet(String ust, String alt, char bekleTusu) {
+    lcd.clear();
+    lcd.print(ust);
+    lcd.setCursor(0, 1);
+    lcd.print(alt);
+    
+    // Belirtilen tuşa basana kadar bekle
+    while (keypad.getKey() != bekleTusu) {
+        delay(100); 
+    }
+    tone(BUZZER, 3500, 50); // Tuşa basıldığında bip sesi
+}
+
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  pinMode(BUZZER, OUTPUT);
+  pinMode(KIRMIZI_LED, OUTPUT); 
+  pinMode(YESIL_LED, OUTPUT);
+  
+  digitalWrite(KIRMIZI_LED, LOW);
+  digitalWrite(YESIL_LED, LOW);
+  
+  // 1. ADIM: BAŞLANGIÇ EKRANI VE BEKLEME
+  ekranBeklet("BOMBA SISTEMI ", "* TUSUNA BASIN", '*');
+  
+  // 2. ADIM: Şifre ve Süre Kurulumu
+  sifreBelirleEkrani();
+  sureBelirleEkrani();
+  
+  // 3. ADIM: Oyunu Başlat
+  oyunBaslat();
+}
+
+void loop() {
+  if (!oyunAktif) return; 
+
+  if (millis() - sonZaman >= 1000) {
+    sonZaman = millis();
+    if (kalanSureSaniye > 0) {
+      kalanSureSaniye--;
+      ekraniGuncelle();
+      tone(BUZZER, 2000, 50); 
+    } else {
+      patlamaEfekti();
+    }
+  }
+
+  char tus = keypad.getKey();
+  if (tus) {
+    tone(BUZZER, 3500, 50); 
+    
+    if (tus == '#') { 
+      if (girilenSifre == kuruluSifre) {
+        imhaEfekti();
+      } else {
+        hataliSifreEfekti();
+      }
+      girilenSifre = ""; 
+      ekraniGuncelle();
+    } 
+    else if (tus == '*') {
+      girilenSifre = "";
+      ekraniGuncelle();
+    }
+    else {
+      if(girilenSifre.length() < 8) {
+        girilenSifre += tus;
+        lcd.setCursor(0, 1);
+        lcd.print(girilenSifre);
+      }
+    }
+  }
+}
+
+// --- EK FONSİYONLAR ---
+
+// GÜNCELLENMİŞ EKRAN GÜNCELLEME FONKSİYONU (Hata Çözümü)
+void ekraniGuncelle() {
+  int dk = kalanSureSaniye / 60;
+  int sn = kalanSureSaniye % 60;
+  
+  // Hata Çözümü: Önceki harfleri silmek için sonuna boşluk ekleniyor.
+  lcd.setCursor(0, 0);
+  lcd.print("SURE: ");
+  if (dk < 10) lcd.print("0");
+  lcd.print(dk);
+  lcd.print(":");
+  if (sn < 10) lcd.print("0");
+  lcd.print(sn);
+  lcd.print("   "); // <-- Bu boşluklar, 'e' harfini veya fazlalıkları temizler.
+  
+  lcd.setCursor(0, 1);
+  if (girilenSifre == "") {
+    lcd.print("SIFRE GIRIN...  "); // Alt satırda da temizleme yapalım
+  } else {
+    lcd.print(girilenSifre);
+    lcd.print("                "); // Şifre kısa kalırsa diye temizleme
+  }
+}
+
+void hataliSifreEfekti() {
+  lcd.clear();
+  lcd.print("HATALI SIFRE!");
+  
+  for(int i = 0; i < 20; i++) {
+    digitalWrite(KIRMIZI_LED, HIGH);
+    digitalWrite(YESIL_LED, LOW);
+    tone(BUZZER, 500, 50); 
+    delay(50);
+    digitalWrite(KIRMIZI_LED, LOW);
+    digitalWrite(YESIL_LED, HIGH);
+    tone(BUZZER, 100, 50);
+    delay(50);
+  }
+  
+  digitalWrite(YESIL_LED, LOW);
+  digitalWrite(KIRMIZI_LED, HIGH);
+  
+  if (kalanSureSaniye > 10) kalanSureSaniye -= 10;
+  else kalanSureSaniye = 1; 
+}
+
+void oyunBaslat() {
+  lcd.clear();
+  lcd.print("BOMBA KURULDU!");
+  digitalWrite(KIRMIZI_LED, HIGH); 
+  digitalWrite(YESIL_LED, LOW);
+  delay(2000);
+  lcd.clear();
+  oyunAktif = true;
+  sonZaman = millis();
+  ekraniGuncelle();
+}
+
+void patlamaEfekti() {
+  oyunAktif = false;
+  patladi = true;
+  lcd.clear();
+  lcd.setCursor(4, 0);
+  lcd.print("B O O M !");
+  lcd.setCursor(2, 1);
+  lcd.print("OYUN BITTI");
+  
+  digitalWrite(YESIL_LED, LOW);
+  for(int i = 0; i < 6; i++) {
+      digitalWrite(KIRMIZI_LED, HIGH); delay(50);
+      digitalWrite(KIRMIZI_LED, LOW); delay(50);
+  }
+  
+  tone(BUZZER, 100); 
+  while(true); 
+}
+
+void imhaEfekti() {
+  oyunAktif = false;
+  imhaOldu = true;
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  lcd.print("IMHA EDILDI");
+  lcd.setCursor(4, 1);
+  lcd.print("BASARILI");
+  
+  digitalWrite(KIRMIZI_LED, LOW);
+  digitalWrite(YESIL_LED, HIGH); 
+  
+  tone(BUZZER, 1000, 100); delay(150);
+  tone(BUZZER, 1200, 100); delay(150);
+  tone(BUZZER, 1500, 200); delay(200);
+  while(true); 
+}
+
+void sifreBelirleEkrani() {
+  lcd.clear();
+  lcd.print("SIFREYI KURUN:");
+  lcd.setCursor(0, 1);
+  
+  while (true) {
+    char key = keypad.getKey();
+    if (key) {
+      tone(BUZZER, 3000, 50);
+      if (key == '#') { if (kuruluSifre.length() > 0) break; } 
+      else if (key == '*') { 
+        kuruluSifre = "";
+        lcd.setCursor(0, 1); lcd.print("                "); lcd.setCursor(0, 1);
+      }
+      else {
+        kuruluSifre += key;
+        lcd.print(key);
+      }
+    }
+  }
+}
+
+void sureBelirleEkrani() {
+  lcd.clear();
+  lcd.print("SURE (DAK:SN):");
+  lcd.setCursor(0, 1);
+  lcd.print("00:00");
+  
+  String zamanStr = "";
+  
+  while (true) {
+    char key = keypad.getKey();
+    if (key && isDigit(key)) {
+      tone(BUZZER, 3000, 50);
+      
+      if (zamanStr.length() < 4) {
+        zamanStr += key;
+        
+        String paddedStr = "0000" + zamanStr;
+        paddedStr = paddedStr.substring(paddedStr.length() - 4); 
+        
+        lcd.setCursor(0, 1);
+        lcd.print(paddedStr.substring(0, 2) + ":" + paddedStr.substring(2));
+      }
+    }
+    else if (key == '#') { 
+      if (zamanStr.length() > 0) {
+        
+        String paddedStr = "0000" + zamanStr;
+        paddedStr = paddedStr.substring(paddedStr.length() - 4); 
+        
+        int dakika = paddedStr.substring(0, 2).toInt();
+        int saniye = paddedStr.substring(2).toInt();
+        
+        kalanSureSaniye = (long)(dakika * 60) + saniye; 
+        break;
+      }
+    }
+    else if (key == '*') { 
+       zamanStr = "";
+       lcd.setCursor(0, 1);
+       lcd.print("00:00");
+    }
+  }
+}
+                </code></pre>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="modal-wifi-msg" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('modal-wifi-msg')">&times;</span>
+      <h2>Internetsiz Mesajlaşma Cihazı</h2>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-bullseye"></i> Amaç</h3>
+        <p>Acil durumlarda, köy, dağ gibi internetin çekmediği alanlarda veya internet altyapısının olmadığı yerlerde
+          haberleşmeyi sağlamak. Cihaz kendi Axess Point'ini (Erişim Noktası) açarak, telefon veya bilgisayarların bu
+          ağa bağlanmasını ve cihazın IP adresi üzerinden web arayüzüne girerek diğer kullanıcılarla mesajlaşmasını
+          sağlar. Tamamen yerel bir ağ üzerinde çalışır, internet gerektirmez.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-video"></i> Video</h3>
+        <div class="video-container">
+          <!-- Placeholder video -->
+          <video controls>
+            <source src="" type="video/mp4">
+            Video hazırlanıyor...
+          </video>
+        </div>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-cogs"></i> Çalışma Mantığı</h3>
+        <p>Cihaz çalıştırıldığında bir Wi-Fi ağı yayını yapar. Kullanıcılar bu ağa şifre ile bağlanır. Ardından web
+          tarayıcısına cihazın IP adresini girerek (örn. 192.168.4.1) özel olarak tasarlanmış mesajlaşma arayüzüne
+          erişirler. Bu arayüz üzerinden ağa bağlı tüm cihazlar birbirleriyle anlık olarak yazışabilir.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-project-diagram"></i> Şema</h3>
+        <div class="schema-container">
+          <!-- Placeholder for schema image -->
+          <img src="" alt="Devre Şeması"
+            style="min-height: 200px; background: #eee; display: flex; align-items: center; justify-content: center; color: #555;"
+            onload="if(this.src=='')this.style.display='none'">
+          <p class="schema-desc">Devre şeması buraya eklenecek.</p>
+        </div>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-code"></i> Kaynak Kod (C++)</h3>
+        <pre><code id="wifi-code" class="language-cpp">
+// Buraya bir şey yapıştırma :)
+// Tüm C++ kodunu "internetsiz_mesajlasma.cpp.txt" dosyasına koy.
+// Site bu dosyayı otomatik okuyup burada düzgün formatta gösterecek.
+        </code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>

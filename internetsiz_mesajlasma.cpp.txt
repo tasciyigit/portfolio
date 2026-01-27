@@ -1,0 +1,1872 @@
+// Internetsiz Mesajlaşma Cihazı - C++ Kodu
+// Tüm kodunu bu dosyanın içine yapıştır.
+// Burada istediğin gibi HTML, uzun string vs. kullanabilirsin; site yapısı bozulmaz.
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <ctype.h>
+#include <Preferences.h>   // Kalıcı ayarlar
+
+// ---------- AP / Network ----------
+#define AP_SSID "YigitESP32tel-AP"
+#define AP_PASS "87654321"
+const IPAddress AP_IP(192,168,4,1);
+
+// Cihazın kendi ismi (giden mesajlarda kullanılır)
+const char DEVICE_NAME[] = "ESP32";
+
+// ---------- OLED ----------
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// ---------- Buttons ----------
+#define PIN_UP     32
+#define PIN_DOWN   33
+#define PIN_LEFT   25
+#define PIN_RIGHT  26
+#define PIN_OK     27
+#define PIN_MODE   14   // Arayüz/mode değiştirme butonu
+
+// ---------- LED & Buzzer ----------
+#define PIN_LED_GREEN 16  // Bağlı (WS connected) -> HIGH
+#define PIN_LED_RED   17  // Bağlı değil -> HIGH
+#define PIN_BUZZER    23  // Aktif buzzer pini (HIGH = bip)
+
+#define DEBOUNCE_MS 160     // per-button debounce
+
+// ---------- Keyboard ----------
+const int ROWS = 4;
+const int COLS = 7;
+
+// Ana (harf) klavye
+char keys[ROWS][COLS] = {
+  {'A','B','C','D','E','F','G'},
+  {'H','I','J','K','L','M','N'},
+  {'O','P','Q','R','S','T','U'},
+  {'V','W','X','Y','Z','<','@'} // '<' = DEL/SPACE, '@' = SEND / ALT TOGGLE
+};
+
+// Alternatif (rakam & sembol) klavye
+char altKeys[ROWS][COLS] = {
+  {'1','2','3','4','5','6','7'},
+  {'8','9','0','.','?','!','-'},
+  {'+','=','/','%',';',',','_'},
+  {'(',')','[',']','<','*','@'} // '<' ve '@' yerleri aynı
+};
+
+bool useAltKeyboard = false; // false = harf klavyesi, true = rakam/sembol klavyesi
+
+int cx = 0, cy = 0;
+
+// ---------- Buffers ----------
+String incomingMsg = "";   // son gelen ham payload (debug / sync için)
+String typedMsg = "";      // cihazdan gönderilecek mesaj (compose ekranı)
+
+// ---------- Servers ----------
+WebServer server(80);
+WebSocketsServer webSocket = WebSocketsServer(81);
+
+// ---------- state ----------
+bool anyClientConnected = false;
+
+// ---------- UI Modes ----------
+enum UIMode { 
+  MODE_SETTINGS = 0,   // Ayarlar
+  MODE_LOG      = 1,   // Gelen/Giden mesaj listesi
+  MODE_COMPOSE  = 2,   // Mesaj yazma
+  MODE_CLOCK    = 3,   // Saat ekranı
+  MODE_GAME     = 4,   // Oyun (yılan)
+  MODE_SELECT   = 5    // Arayüz seçme menüsü (geçici ekran)
+};
+
+UIMode currentMode = MODE_COMPOSE;  // Varsayılan ekran: Mesaj Yazma
+
+const int MODE_COUNT = 5;           // SETTINGS, LOG, COMPOSE, CLOCK, GAME
+int modeSelectIndex = 0;            // Mode seçme menüsünde imleç
+
+// Log ekranı scroll durumu (0 = en yeni, 1 = bir önceki, ...)
+int logOffset = 0;
+// Log detay modu (sağ tuşa basınca açılan ekran)
+bool logDetailMode = false;
+
+// ---------- Ayarlar ----------
+const int SETTINGS_COUNT = 8;   // 0:Ses,1:Zil,2:Parlaklık,3:WiFi Gücü,4:Dil,5:IP,6:SSID,7:PASS
+int settingsIndex = 0;
+int settingsTopIndex = 0;      // Ayarlar ekranında üstte görünen satır
+bool buzzerEnabled = true;     // Ses Aç/Kapa
+int  buzzerPattern = 0;        // 0:kisa, 1:cift, 2:uclu
+int languageMode = 0;          // 0 = TR, 1 = EN
+int brightnessLevel = 1;       // 0: dusuk, 1: orta, 2: yuksek
+int wifiPowerMode  = 0;        // 0: Normal, 1: Maksimum
+
+// ---------- Mesaj Geçmişi (Ring Buffer) ----------
+struct ChatMessage {
+  String text;     // mesaj metni
+  bool incoming;   // true = karşıdan gelen, false = bizden giden
+  String sender;   // "ESP32" veya web istemcisi ismi
+};
+
+const int MAX_HISTORY = 20;
+ChatMessage historyBuf[MAX_HISTORY];
+int historyHead = 0;   // bir sonrakinin yazılacağı index
+int historyCount = 0;  // toplam kayıt (0..MAX_HISTORY)
+
+// ---------- Buzzer (pattern + non-blocking) ----------
+const unsigned long BEEP_LEN_MS = 120;
+const unsigned long BEEP_GAP_MS = 80;
+bool buzzerPlaying = false;
+bool buzzerStateOn = false;
+int  buzzerRemainingBeeps = 0;
+unsigned long buzzerLastChange = 0;
+
+// ---------- OK button hold logic ----------
+bool okDown = false;
+unsigned long okDownTime = 0;
+const unsigned long OK_HOLD_MS = 600; // >=600ms = özel davranışlar
+
+// ---------- per-button debounce ----------
+const int BTN_COUNT = 6;
+const int BTN_PINS[BTN_COUNT] = {PIN_UP, PIN_DOWN, PIN_LEFT, PIN_RIGHT, PIN_OK, PIN_MODE};
+unsigned long lastPressTime[BTN_COUNT] = {0,0,0,0,0,0};
+
+// ---------- Saat & Tarih ----------
+int clockHour   = 12;
+int clockMinute = 0;
+int clockSecond = 0;
+unsigned long lastClockUpdate = 0;
+
+int clockYear   = 0;
+int clockMonth  = 0;
+int clockDay    = 0;
+bool dateValid  = false;
+
+// ---------- Oyun (Yılan) ----------
+const int GAME_COLS = 16;
+const int GAME_ROWS = 8;
+const int GAME_MAX_LENGTH = 64;
+
+int snakeX[GAME_MAX_LENGTH];
+int snakeY[GAME_MAX_LENGTH];
+int snakeLength = 0;
+int snakeDirX = 1;
+int snakeDirY = 0;
+int foodX = 0;
+int foodY = 0;
+bool gameRunning = false;
+bool gameOver = false;
+unsigned long lastGameUpdate = 0;
+const unsigned long GAME_SPEED_MS = 200;
+
+// ---------- Preferences (kalıcı ayarlar) ----------
+Preferences prefs;
+
+// ---------------------------------------------------------------------------
+// İLERİ DEKLARASYONLAR
+// ---------------------------------------------------------------------------
+void drawUI();
+void applyBrightness();
+void applyWifiPower();   // <<< WiFi gücünü uygular
+void resetGame();
+void updateGame();
+void updateClock();
+void handleIncomingMessage(const String &payload);
+void showSplashScreen();
+
+// Kalıcı ayarlar
+void loadSettings();
+void saveSettings();
+
+// Türkçe karakter normalize fonksiyonu (OLED için)
+String normalizeTurkish(const String &s);
+
+// Küçük ikon çizim fonksiyonları
+void drawSettingsIcon(int x, int y);
+void drawComposeIcon(int x, int y);
+void drawLogIcon(int x, int y);
+void drawClockIcon(int x, int y);
+void drawGameIcon(int x, int y);
+void drawModeIcon(int idx, int x, int y);
+
+// ---------------------------------------------------------------------------
+// Yardımcı Fonksiyonlar (Buton, LED, Buzzer, History)
+// ---------------------------------------------------------------------------
+
+int pinIndex(int pin){
+  for(int i=0;i<BTN_COUNT;i++) if(BTN_PINS[i]==pin) return i;
+  return -1;
+}
+
+bool buttonPressedPin(int pin){
+  int idx = pinIndex(pin);
+  if(idx < 0) return false;
+  if(digitalRead(pin) == LOW){
+    unsigned long now = millis();
+    if(now - lastPressTime[idx] > DEBOUNCE_MS){
+      lastPressTime[idx] = now;
+      return true;
+    }
+  }
+  return false;
+}
+
+// LED durumu: bağlı / bağlı değil
+void setConnectedLED(bool connected) {
+  if (connected) {
+    digitalWrite(PIN_LED_GREEN, HIGH);
+    digitalWrite(PIN_LED_RED, LOW);
+  } else {
+    digitalWrite(PIN_LED_GREEN, LOW);
+    digitalWrite(PIN_LED_RED, HIGH);
+  }
+}
+
+// Buzzer bip isteği (seçili pattern ile)
+void requestBeep() {
+  if (!buzzerEnabled) return;
+  if (buzzerPlaying) return;
+
+  buzzerPlaying = true;
+  buzzerStateOn = true;
+  buzzerLastChange = millis();
+
+  switch (buzzerPattern) {
+    case 0: buzzerRemainingBeeps = 1; break;
+    case 1: buzzerRemainingBeeps = 2; break;
+    case 2: buzzerRemainingBeeps = 3; break;
+    default: buzzerRemainingBeeps = 1; break;
+  }
+
+  digitalWrite(PIN_BUZZER, HIGH);
+}
+
+void handleBuzzer() {
+  if (!buzzerPlaying) return;
+
+  unsigned long now = millis();
+  if (buzzerStateOn) {
+    if (now - buzzerLastChange >= BEEP_LEN_MS) {
+      buzzerStateOn = false;
+      buzzerLastChange = now;
+      digitalWrite(PIN_BUZZER, LOW);
+      buzzerRemainingBeeps--;
+      if (buzzerRemainingBeeps <= 0) {
+        buzzerPlaying = false;
+      }
+    }
+  } else {
+    if (buzzerRemainingBeeps > 0 && (now - buzzerLastChange >= BEEP_GAP_MS)) {
+      buzzerStateOn = true;
+      buzzerLastChange = now;
+      digitalWrite(PIN_BUZZER, HIGH);
+    }
+  }
+}
+
+void addMessageToHistory(const String &msg, bool incoming, const String &sender) {
+  if (msg.length() == 0) return;
+
+  String m = msg;
+  if (m.length() > 80) m = m.substring(0, 80);
+
+  historyBuf[historyHead].text = m;
+  historyBuf[historyHead].incoming = incoming;
+  historyBuf[historyHead].sender = sender;
+
+  historyHead = (historyHead + 1) % MAX_HISTORY;
+  if (historyCount < MAX_HISTORY) historyCount++;
+
+  if (currentMode == MODE_LOG && logOffset == 0) {
+    drawUI();
+  }
+}
+
+// Türkçe karakterleri ASCII'ye çevir
+String normalizeTurkish(const String &s) {
+  String out;
+  int len = s.length();
+  for (int i = 0; i < len; i++) {
+    unsigned char c = (unsigned char)s[i];
+
+    if (c < 0x80) {
+      out += (char)c;
+    } else if (c == 0xC3 && i + 1 < len) {
+      unsigned char c2 = (unsigned char)s[i+1];
+      if      (c2 == 0xA7) { out += 'c'; i++; }
+      else if (c2 == 0x87) { out += 'C'; i++; }
+      else if (c2 == 0xB6) { out += 'o'; i++; }
+      else if (c2 == 0x96) { out += 'O'; i++; }
+      else if (c2 == 0xBC) { out += 'u'; i++; }
+      else if (c2 == 0x9C) { out += 'U'; i++; }
+      else { i++; }
+    } else if (c == 0xC4 && i + 1 < len) {
+      unsigned char c2 = (unsigned char)s[i+1];
+      if      (c2 == 0x9F) { out += 'g'; i++; }
+      else if (c2 == 0x9E) { out += 'G'; i++; }
+      else if (c2 == 0xB1) { out += 'i'; i++; }
+      else if (c2 == 0xB0) { out += 'I'; i++; }
+      else { i++; }
+    } else if (c == 0xC5 && i + 1 < len) {
+      unsigned char c2 = (unsigned char)s[i+1];
+      if      (c2 == 0x9F) { out += 's'; i++; }
+      else if (c2 == 0x9E) { out += 'S'; i++; }
+      else { i++; }
+    } else {
+      // Diğerleri atlanır
+    }
+  }
+  return out;
+}
+
+void handleIncomingMessage(const String &payload) {
+  incomingMsg = payload;
+
+  String sender = "Bilinmiyor";
+  String text   = payload;
+
+  if (payload.startsWith("N:")) {
+    int sep = payload.indexOf("|M:");
+    if (sep > 2) {
+      sender = payload.substring(2, sep);
+      text   = payload.substring(sep + 3);
+    }
+  }
+
+  sender = normalizeTurkish(sender);
+  text   = normalizeTurkish(text);
+
+  addMessageToHistory(text, true, sender);
+
+  if (currentMode != MODE_LOG) {
+    requestBeep();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Parlaklık & WiFi Güç
+// ---------------------------------------------------------------------------
+uint8_t contrastForLevel(int level) {
+  switch(level) {
+    case 0: return 5;
+    case 1: return 80;
+    case 2: return 255;
+    default: return 80;
+  }
+}
+
+void applyBrightness() {
+  uint8_t c = contrastForLevel(brightnessLevel);
+  display.ssd1306_command(0x81);
+  display.ssd1306_command(c);
+}
+
+// WiFi çıkış gücünü seçilen moda göre uygula
+void applyWifiPower() {
+  if (wifiPowerMode == 0) {
+    // Normal seviye (biraz daha düşük güç)
+    WiFi.setTxPower(WIFI_POWER_15dBm);
+  } else {
+    // Maksimum seviye
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Kalıcı ayarları yükle / kaydet
+// ---------------------------------------------------------------------------
+void loadSettings() {
+  buzzerEnabled   = prefs.getBool ("buz_en",   true);
+  buzzerPattern   = prefs.getUChar("buz_pat",  0);
+  brightnessLevel = prefs.getUChar("bright",   1);
+  languageMode    = prefs.getUChar("lang",     0);
+  wifiPowerMode   = prefs.getUChar("wifi_pwr", 0);
+
+  if (buzzerPattern < 0 || buzzerPattern > 2) buzzerPattern = 0;
+  if (brightnessLevel > 2) brightnessLevel = 2;
+  if (languageMode > 1) languageMode = 0;
+  if (wifiPowerMode > 1) wifiPowerMode = 0;
+
+  applyBrightness();
+}
+
+void saveSettings() {
+  prefs.putBool ("buz_en",   buzzerEnabled);
+  prefs.putUChar("buz_pat",  (uint8_t)buzzerPattern);
+  prefs.putUChar("bright",   (uint8_t)brightnessLevel);
+  prefs.putUChar("lang",     (uint8_t)languageMode);
+  prefs.putUChar("wifi_pwr", (uint8_t)wifiPowerMode);
+}
+
+// ---------------------------------------------------------------------------
+// Saat & Tarih
+// ---------------------------------------------------------------------------
+bool isLeapYear(int y) {
+  return ((y % 4 == 0) && (y % 100 != 0)) || (y % 400 == 0);
+}
+
+int daysInMonth(int y, int m) {
+  static const int days[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+  if (m < 1 || m > 12) return 31;
+  if (m == 2 && isLeapYear(y)) return 29;
+  return days[m-1];
+}
+
+void updateClock() {
+  unsigned long now = millis();
+  if (now - lastClockUpdate >= 1000) {
+    lastClockUpdate += 1000;
+
+    clockSecond++;
+    if (clockSecond >= 60) {
+      clockSecond = 0;
+      clockMinute++;
+      if (clockMinute >= 60) {
+        clockMinute = 0;
+        clockHour++;
+        if (clockHour >= 24) {
+          clockHour = 0;
+          if (dateValid) {
+            clockDay++;
+            int dim = daysInMonth(clockYear, clockMonth);
+            if (clockDay > dim) {
+              clockDay = 1;
+              clockMonth++;
+              if (clockMonth > 12) {
+                clockMonth = 1;
+                clockYear++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (currentMode == MODE_CLOCK) {
+      drawUI();
+    }
+  }
+}
+
+void setTimeFromMessage(const String &msg) {
+  if (!msg.startsWith("TIME:")) return;
+  String t = msg.substring(5);
+
+  int hh = 0, mm = 0, ss = 0;
+
+  if (t.length() >= 19 && t.charAt(4) == '-' && t.charAt(7) == '-' && t.charAt(10) == ' ') {
+    int yy = t.substring(0,4).toInt();
+    int mo = t.substring(5,7).toInt();
+    int dd = t.substring(8,10).toInt();
+    hh = t.substring(11,13).toInt();
+    mm = t.substring(14,16).toInt();
+    ss = t.substring(17,19).toInt();
+
+    if (hh < 0 || hh > 23) return;
+    if (mm < 0 || mm > 59) return;
+    if (ss < 0 || ss > 59) return;
+
+    if (yy >= 2000 && mo >= 1 && mo <= 12 && dd >= 1 && dd <= 31) {
+      clockYear = yy;
+      clockMonth = mo;
+      clockDay = dd;
+      dateValid = true;
+      Serial.printf("Date synced: %04d-%02d-%02d\n", yy, mo, dd);
+    }
+  } else if (t.length() >= 8) {
+    hh = t.substring(0,2).toInt();
+    mm = t.substring(3,5).toInt();
+    ss = t.substring(6,8).toInt();
+
+    if (hh < 0 || hh > 23) return;
+    if (mm < 0 || mm > 59) return;
+    if (ss < 0 || ss > 59) return;
+  } else {
+    return;
+  }
+
+  clockHour   = hh;
+  clockMinute = mm;
+  clockSecond = ss;
+  lastClockUpdate = millis();
+
+  Serial.printf("Time synced: %02d:%02d:%02d\n", hh, mm, ss);
+}
+
+// ---------------------------------------------------------------------------
+// Oyun (Yılan)
+// ---------------------------------------------------------------------------
+bool snakeOccupies(int x, int y) {
+  for (int i = 0; i < snakeLength; i++) {
+    if (snakeX[i] == x && snakeY[i] == y) return true;
+  }
+  return false;
+}
+
+void placeFood() {
+  for (int tries = 0; tries < 100; tries++) {
+    int fx = random(GAME_COLS);
+    int fy = random(GAME_ROWS);
+    if (!snakeOccupies(fx, fy)) {
+      foodX = fx;
+      foodY = fy;
+      return;
+    }
+  }
+  foodX = 0;
+  foodY = 0;
+}
+
+void resetGame() {
+  snakeLength = 3;
+  int startX = GAME_COLS / 2;
+  int startY = GAME_ROWS / 2;
+
+  snakeX[0] = startX;
+  snakeY[0] = startY;
+  snakeX[1] = startX - 1;
+  snakeY[1] = startY;
+  snakeX[2] = startX - 2;
+  snakeY[2] = startY;
+
+  snakeDirX = 1;
+  snakeDirY = 0;
+
+  gameRunning = true;
+  gameOver = false;
+  lastGameUpdate = millis();
+
+  placeFood();
+  drawUI();
+}
+
+void updateGame() {
+  if (currentMode != MODE_GAME) return;
+  if (!gameRunning) return;
+
+  unsigned long now = millis();
+  if (now - lastGameUpdate < GAME_SPEED_MS) return;
+  lastGameUpdate = now;
+
+  int newHeadX = snakeX[0] + snakeDirX;
+  int newHeadY = snakeY[0] + snakeDirY;
+
+  if (newHeadX < 0 || newHeadX >= GAME_COLS || newHeadY < 0 || newHeadY >= GAME_ROWS) {
+    gameOver = true;
+    gameRunning = false;
+    requestBeep();
+    drawUI();
+    return;
+  }
+
+  for (int i = 0; i < snakeLength; i++) {
+    if (snakeX[i] == newHeadX && snakeY[i] == newHeadY) {
+      gameOver = true;
+      gameRunning = false;
+      requestBeep();
+      drawUI();
+      return;
+    }
+  }
+
+  int tailX = snakeX[snakeLength - 1];
+  int tailY = snakeY[snakeLength - 1];
+
+  for (int i = snakeLength - 1; i > 0; i--) {
+    snakeX[i] = snakeX[i - 1];
+    snakeY[i] = snakeY[i - 1];
+  }
+
+  snakeX[0] = newHeadX;
+  snakeY[0] = newHeadY;
+
+  if (newHeadX == foodX && newHeadY == foodY) {
+    if (snakeLength < GAME_MAX_LENGTH) {
+      snakeLength++;
+      snakeX[snakeLength - 1] = tailX;
+      snakeY[snakeLength - 1] = tailY;
+    }
+    placeFood();
+  }
+
+  drawUI();
+}
+
+// ---------------------------------------------------------------------------
+// HTML page (web arayüzü)
+// ---------------------------------------------------------------------------
+const char HTML_page[] PROGMEM = R"rawliteral(
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YigitESP32tel</title>
+<style>
+:root{
+  --bg-body:#020617;
+  --bg-card:#020817;
+  --border:#1f2937;
+  --accent:#22c55e;
+  --accent-soft:rgba(34,197,94,0.12);
+  --text:#e5e7eb;
+  --text-muted:#9ca3af;
+  --danger:#ef4444;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--bg-body);
+  color:var(--text);
+  font-size:15px;
+}
+#app{
+  max-width:900px;
+  margin:0 auto;
+  padding:12px 10px 80px;
+}
+#header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:8px 10px;
+  border-radius:10px;
+  background:linear-gradient(135deg,#0b1120,#020617);
+  border:1px solid var(--border);
+  box-shadow:0 10px 25px rgba(0,0,0,0.35);
+  margin-bottom:8px;
+}
+#model{
+  font-weight:600;
+  letter-spacing:0.04em;
+  font-size:14px;
+  text-transform:uppercase;
+}
+#status{
+  font-size:13px;
+}
+#st{
+  font-weight:500;
+}
+#wrap{
+  margin-top:8px;
+}
+#cols{
+  display:flex;
+  gap:10px;
+  margin-top:6px;
+  flex-wrap:wrap;
+}
+.box{
+  flex:1 1 0;
+  min-width:0;
+  height:300px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--bg-card);
+  overflow:auto;
+  padding:6px 8px 8px;
+}
+.boxTitle{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  color:var(--text-muted);
+  margin-bottom:4px;
+}
+#userBar{
+  margin-top:8px;
+  padding:7px 9px;
+  border-radius:10px;
+  background:rgba(15,23,42,0.9);
+  border:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:13px;
+}
+#userNameDisplay{
+  font-weight:600;
+  color:var(--accent);
+}
+#changeName{
+  border:1px solid var(--accent-soft);
+  background:rgba(34,197,94,0.1);
+  color:var(--accent);
+  border-radius:999px;
+  padding:4px 10px;
+  font-size:12px;
+  cursor:pointer;
+}
+#changeName:hover{
+  background:var(--accent-soft);
+}
+#inputRow{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
+  padding:8px 10px;
+  background:rgba(15,23,42,0.95);
+  backdrop-filter:blur(8px);
+  border-top:1px solid var(--border);
+  display:flex;
+  gap:8px;
+}
+#msg{
+  flex:1;
+  padding:9px 12px;
+  font-size:16px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:#020617;
+  color:var(--text);
+  outline:none;
+}
+#msg::placeholder{
+  color:var(--text-muted);
+}
+#btn{
+  padding:9px 14px;
+  border-radius:999px;
+  border:none;
+  background:var(--accent);
+  color:#000;
+  font-size:14px;
+  font-weight:600;
+  cursor:pointer;
+}
+#btn:active{
+  transform:scale(0.97);
+}
+.line{
+  margin:3px 0;
+  padding:4px 5px;
+  border-radius:6px;
+  font-size:14px;
+  border:1px solid transparent;
+}
+.youTag{
+  color:#38bdf8;
+  border-color:rgba(56,189,248,0.25);
+  background:rgba(15,23,42,0.7);
+}
+.inTag{
+  color:#4ade80;
+  border-color:rgba(74,222,128,0.25);
+  background:rgba(6,95,70,0.35);
+}
+.systemTag{
+  color:var(--text-muted);
+  font-style:italic;
+}
+@media(max-width:700px){
+  body{
+    font-size:16px;
+  }
+  #app{
+    padding:10px 6px 90px;
+  }
+  #cols{
+    flex-direction:column;
+  }
+  .box{
+    height:auto;
+    min-height:280px;
+    max-height:none;
+  }
+  .boxTitle{
+    font-size:13px;
+  }
+  .line{
+    font-size:15px;
+  }
+  #status{
+    font-size:12px;
+  }
+}
+</style>
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <div id="model">yigitESP32tel</div>
+      <div id="status">Durum: <span id="st">baglaniyor...</span></div>
+    </header>
+
+    <section id="userBar">
+      <div>
+        Kullanıcı adı:
+        <span id="userNameDisplay">-</span>
+      </div>
+      <button id="changeName">Adı değiştir</button>
+    </section>
+
+    <div id="wrap">
+      <div id="cols">
+        <div class="box" id="you">
+          <div class="boxTitle">Sizden giden</div>
+        </div>
+        <div class="box" id="in">
+          <div class="boxTitle">Gelen mesajlar</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="inputRow">
+      <input id="msg" placeholder="Mesaj yaz..." autocomplete="off"/>
+      <button id="btn">Gönder</button>
+    </div>
+  </div>
+
+<script>
+(function(){
+  var host = window.location.hostname;
+  var ws;
+  var st = document.getElementById('st');
+  var inBox = document.getElementById('in');
+  var youBox = document.getElementById('you');
+  var input = document.getElementById('msg');
+  var btn = document.getElementById('btn');
+  var userNameDisplay = document.getElementById('userNameDisplay');
+  var changeNameBtn = document.getElementById('changeName');
+
+  var clientName = "";
+  var lastSent = "";
+  var lastSentTime = 0;
+  var ECHO_IGNORE_MS = 700;
+
+  function append(el, text, cls){
+    var d = document.createElement('div');
+    d.className = 'line ' + (cls||'');
+    d.textContent = text;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function loadName(){
+    try{
+      var stored = localStorage.getItem('deskRadioName') || "";
+      clientName = stored;
+    }catch(e){}
+    if(!clientName){
+      askName();
+    }else{
+      userNameDisplay.textContent = clientName;
+    }
+  }
+
+  function askName(){
+    var def = clientName || "";
+    var n = prompt("Bu cihaz icin bir isim girin (ornegin: YiğitPhone):", def);
+    if(!n){ 
+      if(!clientName){
+        clientName = "Bilinmeyen";
+        userNameDisplay.textContent = clientName;
+      }
+      return;
+    }
+    n = n.trim();
+    if(!n){
+      if(!clientName){
+        clientName = "Bilinmeyen";
+      }
+    }else{
+      clientName = n;
+    }
+    userNameDisplay.textContent = clientName;
+    try{
+      localStorage.setItem('deskRadioName', clientName);
+    }catch(e){}
+  }
+
+  changeNameBtn.addEventListener('click', function(){
+    askName();
+  });
+
+  function buildPayload(text){
+    var name = clientName || "Bilinmeyen";
+    return "N:" + name + "|M:" + text;
+  }
+
+  function parsePayload(data){
+    if(typeof data !== 'string'){
+      return { sender:"?", text:String(data) };
+    }
+    if(data.indexOf("N:") === 0){
+      var sep = data.indexOf("|M:");
+      if(sep > 2){
+        return {
+          sender: data.substring(2, sep),
+          text: data.substring(sep+3)
+        };
+      }
+    }
+    return { sender:"?", text:data };
+  }
+
+  function connectWS(){
+    ws = new WebSocket('ws://' + host + ':81/');
+    st.textContent = "baglaniyor...";
+
+    ws.onopen = function(){
+      st.textContent = "WS baglandi";
+      try{
+        var now = new Date();
+        var yy = String(now.getFullYear());
+        var mo = String(now.getMonth() + 1).padStart(2,'0');
+        var dd = String(now.getDate()).padStart(2,'0');
+        var hh = String(now.getHours()).padStart(2,'0');
+        var mi = String(now.getMinutes()).padStart(2,'0');
+        var ss = String(now.getSeconds()).padStart(2,'0');
+        ws.send('TIME:' + yy + '-' + mo + '-' + dd + ' ' + hh + ':' + mi + ':' + ss);
+      }catch(e){}
+    };
+
+    ws.onclose = function(){
+      st.textContent = 'WS kapali, yeniden baglaniliyor...';
+      setTimeout(function(){ location.reload(); }, 1500);
+    };
+
+    ws.onerror = function(){
+      st.textContent = 'WS hata';
+    };
+
+    ws.onmessage = function(ev){
+      var data = ev.data;
+      if(typeof data === 'string' && data.indexOf('TIME:') === 0) return;
+
+      var now = Date.now();
+      if(lastSent && (now - lastSentTime) < ECHO_IGNORE_MS && data === lastSent){
+        lastSent = "";
+        return;
+      }
+
+      var p = parsePayload(data);
+      append(inBox, p.sender + ": " + p.text, 'inTag');
+    };
+  }
+
+  function sendNow(){
+    var v = input.value;
+    if(!v) return;
+    var trimmed = v.trim();
+    if(!trimmed) return;
+
+    var payload = buildPayload(trimmed);
+
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(payload);
+      append(youBox, (clientName || "Ben") + ": " + trimmed, 'youTag');
+      lastSent = payload;
+      lastSentTime = Date.now();
+    } else {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST','/send');
+      xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+      xhr.send('msg=' + encodeURIComponent(payload));
+      append(youBox, (clientName || "Ben") + ": " + trimmed + " (HTTP)", 'youTag');
+      lastSent = payload;
+      lastSentTime = Date.now();
+    }
+
+    input.value = '';
+    input.focus();
+  }
+
+  btn.addEventListener('click', sendNow);
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      sendNow();
+    }
+  });
+
+  loadName();
+  connectWS();
+})();
+</script>
+</body>
+</html>
+)rawliteral";
+
+// ---------------------------------------------------------------------------
+// Web handlers
+// ---------------------------------------------------------------------------
+void handleRoot() {
+  server.send_P(200, "text/html", HTML_page);
+}
+
+void handleSend() {
+  if (server.hasArg("msg")) {
+    String m = server.arg("msg");
+    if (m.length()>400) m = m.substring(0,400);
+
+    handleIncomingMessage(m);
+    webSocket.broadcastTXT(m);
+    server.send(200, "text/plain", "OK");
+    Serial.printf("HTTP /send received: %s\n", m.c_str());
+  } else {
+    server.send(400, "text/plain", "No 'msg' provided");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket event
+// ---------------------------------------------------------------------------
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_CONNECTED: {
+      IPAddress ip = webSocket.remoteIP(num);
+      Serial.printf("WS client %u connected from %d.%d.%d.%d\n",
+                    num, ip[0],ip[1],ip[2],ip[3]);
+      anyClientConnected = true;
+      setConnectedLED(true);
+
+      if(incomingMsg.length()>0) webSocket.sendTXT(num, incomingMsg);
+      break;
+    }
+    case WStype_DISCONNECTED: {
+      Serial.printf("WS client %u disconnected\n", num);
+      anyClientConnected = false;
+      setConnectedLED(false);
+      break;
+    }
+    case WStype_TEXT: {
+      String msg = String((char*)payload);
+
+      if (msg.startsWith("TIME:")) {
+        setTimeFromMessage(msg);
+        break;
+      }
+
+      Serial.printf("WS msg from client %u: %s\n", num, msg.c_str());
+      handleIncomingMessage(msg);
+      webSocket.broadcastTXT(msg);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Küçük ikon çizimleri
+// ---------------------------------------------------------------------------
+void drawSettingsIcon(int x, int y) {
+  display.drawCircle(x+5, y+5, 4, SSD1306_WHITE);
+  display.drawLine(x+5, y,   x+5, y+2, SSD1306_WHITE);
+  display.drawLine(x+5, y+8, x+5, y+10, SSD1306_WHITE);
+  display.drawLine(x,   y+5, x+2, y+5, SSD1306_WHITE);
+  display.drawLine(x+8, y+5, x+10,y+5, SSD1306_WHITE);
+}
+
+void drawComposeIcon(int x, int y) {
+  display.drawLine(x,   y+8, x+10, y+3, SSD1306_WHITE);
+  display.drawLine(x,   y+8, x+5,  y+10,SSD1306_WHITE);
+  display.drawLine(x+10,y+3, x+5,  y+10,SSD1306_WHITE);
+}
+
+void drawLogIcon(int x, int y) {
+  display.drawRect(x, y, 10, 10, SSD1306_WHITE);
+  display.drawLine(x+2, y+3, x+8, y+3, SSD1306_WHITE);
+  display.drawLine(x+2, y+6, x+8, y+6, SSD1306_WHITE);
+}
+
+void drawClockIcon(int x, int y) {
+  display.drawCircle(x+5, y+5, 4, SSD1306_WHITE);
+  display.drawLine(x+5, y+5, x+5, y+2, SSD1306_WHITE);
+  display.drawLine(x+5, y+5, x+8, y+5, SSD1306_WHITE);
+}
+
+void drawGameIcon(int x, int y) {
+  display.drawRect(x,   y+6, 3, 3, SSD1306_WHITE);
+  display.drawRect(x+3, y+6, 3, 3, SSD1306_WHITE);
+  display.drawRect(x+6, y+3, 3, 3, SSD1306_WHITE);
+  display.drawRect(x+3, y,   3, 3, SSD1306_WHITE);
+}
+
+void drawModeIcon(int idx, int x, int y) {
+  switch(idx) {
+    case 0: drawSettingsIcon(x, y); break;
+    case 1: drawLogIcon(x, y);      break;
+    case 2: drawComposeIcon(x, y);  break;
+    case 3: drawClockIcon(x, y);    break;
+    case 4: drawGameIcon(x, y);     break;
+    default: break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UI çizim fonksiyonları
+// ---------------------------------------------------------------------------
+void drawComposeUI() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+
+  display.setCursor(0,0);
+  if (languageMode == 0) display.print("Yaz:");
+  else                   display.print("Write:");
+
+  const int maxCharsPerLine = 18;
+  String txt = typedMsg;
+  String line1, line2;
+
+  if (txt.length() <= maxCharsPerLine) {
+    line1 = txt;
+    line2 = "";
+  } else if (txt.length() <= 2*maxCharsPerLine) {
+    line1 = txt.substring(0, maxCharsPerLine);
+    line2 = txt.substring(maxCharsPerLine);
+  } else {
+    int start = txt.length() - 2*maxCharsPerLine;
+    String last = txt.substring(start);
+    line1 = last.substring(0, maxCharsPerLine);
+    line2 = last.substring(maxCharsPerLine);
+  }
+
+  display.setCursor(0,12);
+  display.print(line1);
+  display.setCursor(0,22);
+  display.print(line2);
+
+  display.drawLine(0,32,127,32,SSD1306_WHITE);
+
+  int gridTop = 34;
+  int cellW = 18;
+  int cellH = 8;
+
+  for (int r=0; r<ROWS; r++) {
+    for (int c=0; c<COLS; c++) {
+      int x = c*cellW;
+      int y = gridTop + r*cellH;
+
+      char ch = useAltKeyboard ? altKeys[r][c] : keys[r][c];
+
+      if (r==cy && c==cx) {
+        display.fillRect(x, y-1, cellW, cellH+2, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(x+4, y);
+        display.print(ch);
+        display.setTextColor(SSD1306_WHITE);
+      } else {
+        display.setCursor(x+4, y);
+        display.print(ch);
+      }
+    }
+  }
+
+  display.display();
+}
+
+void drawLogUI() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+
+  if (logDetailMode) {
+    display.setCursor(0,0);
+    if (languageMode == 0) display.print("Mesaj Detayi");
+    else                   display.print("Message Detail");
+
+    if (historyCount == 0) {
+      display.setCursor(0, 20);
+      if (languageMode == 0) display.print("Henuz mesaj yok");
+      else                   display.print("No messages yet");
+      display.display();
+      return;
+    }
+
+    int idx = historyCount - 1 - logOffset;
+    if (idx < 0) idx = 0;
+    int phys = (historyHead + MAX_HISTORY - historyCount + idx) % MAX_HISTORY;
+    ChatMessage &m = historyBuf[phys];
+
+    int y = 12;
+    display.setCursor(0,y);
+    if (languageMode == 0) display.print("Yon: ");
+    else                   display.print("Dir: ");
+    display.print(m.incoming ? "< Gelen" : "> Giden");
+    y += 10;
+
+    display.setCursor(0,y);
+    if (languageMode == 0) display.print("Kim: ");
+    else                   display.print("From: ");
+    String sname = m.sender;
+    if (sname.length() > 14) sname = sname.substring(0,14);
+    display.print(sname);
+    y += 12;
+
+    display.setCursor(0,y);
+    String t = m.text;
+    if (t.length() > 18) {
+      String l1 = t.substring(0,18);
+      String l2 = t.substring(18);
+      if (l2.length() > 18) l2 = l2.substring(0,18);
+      display.print(l1);
+      y += 10;
+      display.setCursor(0,y);
+      display.print(l2);
+    } else {
+      display.print(t);
+    }
+
+    display.display();
+    return;
+  }
+
+  display.setCursor(0,0);
+  if (languageMode == 0) display.print("Gelen/Giden");
+  else                   display.print("Messages");
+
+  int y = 10;
+  int maxLines = 6;
+
+  if (historyCount == 0) {
+    display.setCursor(0, 20);
+    if (languageMode == 0) display.print("Henuz mesaj yok");
+    else                   display.print("No messages yet");
+  } else {
+    for (int line = 0; line < maxLines; line++) {
+      int idx = historyCount - 1 - (logOffset + line);
+      if (idx < 0) break;
+
+      int phys = (historyHead + MAX_HISTORY - historyCount + idx) % MAX_HISTORY;
+      ChatMessage &m = historyBuf[phys];
+
+      display.setCursor(0, y);
+      display.print(m.incoming ? '<' : '>');
+      display.print(' ');
+
+      String s = m.text;
+      if (s.length() > 19) s = s.substring(0,19);
+      display.print(s);
+
+      y += 8;
+    }
+  }
+
+  display.display();
+}
+
+void drawSettingsUI() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+
+  display.setCursor(0,0);
+  if (languageMode == 0) display.print("Ayarlar");
+  else                   display.print("Settings");
+
+  int y = 12;
+  const int visibleLines = 5;
+
+  for (int line = 0; line < visibleLines; line++) {
+    int idx = settingsTopIndex + line;
+    if (idx >= SETTINGS_COUNT) break;
+
+    display.setCursor(0,y);
+    display.print(settingsIndex == idx ? ">" : " ");
+    display.setCursor(8,y);
+
+    switch(idx) {
+      case 0: { // Ses
+        if (languageMode == 0) display.print("Ses: ");
+        else                   display.print("Sound: ");
+        if (buzzerEnabled)     display.print(languageMode == 0 ? "Acik"   : "On");
+        else                   display.print(languageMode == 0 ? "Kapali" : "Off");
+        break;
+      }
+      case 1: { // Zil
+        if (languageMode == 0) display.print("Zil: ");
+        else                   display.print("Tone: ");
+        if      (buzzerPattern == 0) display.print(languageMode == 0 ? "Kisa" : "Short");
+        else if (buzzerPattern == 1) display.print(languageMode == 0 ? "Cift" : "Double");
+        else                         display.print(languageMode == 0 ? "Uc"   : "Triple");
+        break;
+      }
+      case 2: { // Parlaklık
+        if (languageMode == 0) display.print("Parlaklik: ");
+        else                   display.print("Brightness: ");
+        if      (brightnessLevel == 0) display.print(languageMode==0 ? "Dusuk"  : "Low");
+        else if (brightnessLevel == 1) display.print(languageMode==0 ? "Orta"   : "Mid");
+        else                           display.print(languageMode==0 ? "Yuksek" : "High");
+        break;
+      }
+      case 3: { // WiFi Gücü
+        if (languageMode == 0) display.print("WiFi Gucu: ");
+        else                   display.print("WiFi Power: ");
+        if (wifiPowerMode == 0)
+          display.print(languageMode == 0 ? "Normal" : "Normal");
+        else
+          display.print(languageMode == 0 ? "Maks"   : "Max");
+        break;
+      }
+      case 4: { // Dil
+        if (languageMode == 0) display.print("Dil: TR");
+        else                   display.print("Language: EN");
+        break;
+      }
+      case 5: { // IP
+        if (languageMode == 0) display.print("IP: ");
+        else                   display.print("IP: ");
+        display.print(AP_IP.toString());
+        break;
+      }
+      case 6: { // SSID
+        if (languageMode == 0) display.print("SSID:");
+        else                   display.print("SSID:");
+        display.print(AP_SSID);
+        break;
+      }
+      case 7: { // PASS
+        if (languageMode == 0) display.print("PASS:");
+        else                   display.print("PASS:");
+        display.print(AP_PASS);
+        break;
+      }
+    }
+
+    y += 10;
+  }
+
+  display.display();
+}
+
+void drawClockUI() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  if (languageMode == 0) display.print("Saat");
+  else                   display.print("Clock");
+
+  display.setTextSize(2);
+  char buf[6];
+  snprintf(buf, sizeof(buf), "%02d:%02d", clockHour, clockMinute);
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
+  int x = (SCREEN_WIDTH - w) / 2;
+  int y = 16;
+  display.setCursor(x, y);
+  display.print(buf);
+
+  display.setTextSize(1);
+  display.setCursor(0, 48);
+  if (dateValid) {
+    char dbuf[16];
+    snprintf(dbuf, sizeof(dbuf), "%02d.%02d.%04d", clockDay, clockMonth, clockYear);
+    if (languageMode == 0) {
+      display.print("Tarih: ");
+      display.print(dbuf);
+    } else {
+      display.print("Date: ");
+      display.print(dbuf);
+    }
+  } else {
+    if (languageMode == 0) display.print("Tarih: --.--.----");
+    else                   display.print("Date: --.--.----");
+  }
+
+  display.display();
+}
+
+void drawGameUI() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  if (gameOver) {
+    display.setTextSize(2);
+    int16_t x1, y1;
+    uint16_t w, h;
+
+    const char* txt1 = (languageMode == 0) ? "Oyun" : "Game";
+    const char* txt2 = (languageMode == 0) ? "Bitti" : "Over";
+
+    display.getTextBounds(txt1, 0, 0, &x1, &y1, &w, &h);
+    int x = (SCREEN_WIDTH - w) / 2;
+    int y = 16;
+    display.setCursor(x, y);
+    display.print(txt1);
+
+    display.getTextBounds(txt2, 0, 0, &x1, &y1, &w, &h);
+    x = (SCREEN_WIDTH - w) / 2;
+    y = 32;
+    display.setCursor(x, y);
+    display.print(txt2);
+
+    display.setTextSize(1);
+    display.setCursor(0, 54);
+    if (languageMode == 0) display.print("OK: Yeniden");
+    else                   display.print("OK: Restart");
+  } else {
+    for (int y = 0; y < GAME_ROWS; y++) {
+      for (int x = 0; x < GAME_COLS; x++) {
+        int px = x * 8;
+        int py = y * 8;
+
+        bool isSnake = false;
+        for (int i = 0; i < snakeLength; i++) {
+          if (snakeX[i] == x && snakeY[i] == y) {
+            isSnake = true;
+            break;
+          }
+        }
+
+        if (isSnake) {
+          display.fillRect(px, py, 8, 8, SSD1306_WHITE);
+        } else if (x == foodX && y == foodY) {
+          display.drawRect(px+1, py+1, 6, 6, SSD1306_WHITE);
+        }
+      }
+    }
+  }
+
+  display.display();
+}
+
+void drawModeSelectUI() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+
+  display.setCursor(0,0);
+  if (languageMode == 0) display.print("Arayuz Sec");
+  else                   display.print("Select Mode");
+
+  const char* labelsTR[MODE_COUNT] = {
+    "Ayarlar",
+    "Mesaj Logu",
+    "Mesaj Yaz",
+    "Saat",
+    "Oyun"
+  };
+  const char* labelsEN[MODE_COUNT] = {
+    "Settings",
+    "Msg Log",
+    "Compose",
+    "Clock",
+    "Game"
+  };
+  const char** labels = (languageMode == 0) ? (const char**)labelsTR : (const char**)labelsEN;
+
+  int y = 16;
+  for (int i=0; i<MODE_COUNT; i++) {
+    display.setCursor(0,y);
+    display.print(i == modeSelectIndex ? ">" : " ");
+
+    int iconX = 8;
+    drawModeIcon(i, iconX, y-2);
+
+    int textX = 22;
+    display.setCursor(textX,y);
+    display.print(labels[i]);
+    y += 10;
+  }
+
+  display.display();
+}
+
+void drawUI() {
+  switch(currentMode) {
+    case MODE_COMPOSE:  drawComposeUI();   break;
+    case MODE_LOG:      drawLogUI();       break;
+    case MODE_SETTINGS: drawSettingsUI();  break;
+    case MODE_CLOCK:    drawClockUI();     break;
+    case MODE_GAME:     drawGameUI();      break;
+    case MODE_SELECT:   drawModeSelectUI();break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Splash screen
+// ---------------------------------------------------------------------------
+void showSplashScreen() {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+
+  display.setCursor(10, 10);
+  display.print("Hosgeldin Yigit");
+  display.setCursor(10, 24);
+  display.print("Hazirlaniyor...");
+
+  int barX = 10;
+  int barY = 40;
+  int barW = 108;
+  int barH = 10;
+  display.drawRect(barX, barY, barW, barH, SSD1306_WHITE);
+  display.display();
+
+  unsigned long start = millis();
+  const unsigned long duration = 5000;
+
+  while (millis() - start < duration) {
+    unsigned long elapsed = millis() - start;
+    float ratio = (float)elapsed / (float)duration;
+    if (ratio > 1.0f) ratio = 1.0f;
+
+    int fillW = (int)((barW - 2) * ratio);
+
+    display.fillRect(barX + 1, barY + 1, barW - 2, barH - 2, SSD1306_BLACK);
+    display.fillRect(barX + 1, barY + 1, fillW, barH - 2, SSD1306_WHITE);
+
+    display.display();
+    delay(80);
+  }
+
+  delay(200);
+}
+
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
+void setupPinsAndDisplay() {
+  for (int i=0;i<BTN_COUNT;i++) {
+    pinMode(BTN_PINS[i], INPUT_PULLUP);
+  }
+
+  pinMode(PIN_LED_GREEN, OUTPUT);
+  pinMode(PIN_LED_RED, OUTPUT);
+  pinMode(PIN_BUZZER, OUTPUT);
+
+  digitalWrite(PIN_LED_GREEN, LOW);
+  digitalWrite(PIN_LED_RED, HIGH);
+  digitalWrite(PIN_BUZZER, LOW);
+
+  Wire.begin(21,22);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 init failed");
+    while(true) delay(1000);
+  }
+  display.clearDisplay();
+  applyBrightness();
+  display.display();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  prefs.begin("yigitcfg", false);
+
+  setupPinsAndDisplay();
+
+  loadSettings();
+
+  showSplashScreen();
+
+  randomSeed(analogRead(34));
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(AP_IP, AP_IP, IPAddress(255,255,255,0));
+  WiFi.softAP(AP_SSID, AP_PASS);
+  applyWifiPower();   // <<< seçilen moda göre WiFi gücünü ayarla
+
+  Serial.print("AP IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  server.on("/", handleRoot);
+  server.on("/send", HTTP_POST, handleSend);
+  server.begin();
+  Serial.println("HTTP server started");
+
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+  Serial.println("WebSocket server started on port 81");
+
+  typedMsg = "";
+  incomingMsg = "";
+
+  currentMode = MODE_COMPOSE;
+  logOffset = 0;
+  settingsIndex = 0;
+  settingsTopIndex = 0;
+  modeSelectIndex = (int)currentMode;
+  logDetailMode = false;
+
+  setConnectedLED(false);
+
+  clockHour = 12;
+  clockMinute = 0;
+  clockSecond = 0;
+  lastClockUpdate = millis();
+  dateValid = false;
+
+  drawUI();
+}
+
+// ---------------------------------------------------------------------------
+// Loop
+// ---------------------------------------------------------------------------
+void loop() {
+  server.handleClient();
+  webSocket.loop();
+  handleBuzzer();
+  updateClock();
+  updateGame();
+
+  bool upPressed    = buttonPressedPin(PIN_UP);
+  bool downPressed  = buttonPressedPin(PIN_DOWN);
+  bool leftPressed  = buttonPressedPin(PIN_LEFT);
+  bool rightPressed = buttonPressedPin(PIN_RIGHT);
+  bool modePressed  = buttonPressedPin(PIN_MODE);
+
+  if (modePressed) {
+    if (currentMode != MODE_SELECT) {
+      modeSelectIndex = (int)currentMode;
+      if (modeSelectIndex >= MODE_COUNT) modeSelectIndex = 0;
+      currentMode = MODE_SELECT;
+      drawUI();
+    } else {
+      currentMode = MODE_COMPOSE;
+      drawUI();
+    }
+  }
+
+  switch(currentMode) {
+        case MODE_COMPOSE:
+      if (upPressed) {
+        // En üst satırdaysak yukarı basınca en alta git
+        cy = (cy == 0) ? (ROWS - 1) : (cy - 1);
+        drawUI();
+      }
+      else if (downPressed) {
+        // En alt satırdaysak aşağı basınca en üste git
+        cy = (cy == ROWS - 1) ? 0 : (cy + 1);
+        drawUI();
+      }
+      else if (leftPressed) {
+        // En soldaysak sola basınca en sağa git
+        cx = (cx == 0) ? (COLS - 1) : (cx - 1);
+        drawUI();
+      }
+      else if (rightPressed) {
+        // En sağdaysak sağa basınca en sola git
+        cx = (cx == COLS - 1) ? 0 : (cx + 1);
+        drawUI();
+      }
+      break;
+
+
+    case MODE_LOG:
+      if (upPressed && historyCount > 0 && logOffset < historyCount - 1) {
+        logOffset++;
+        drawUI();
+      } else if (downPressed && logOffset > 0) {
+        logOffset--;
+        drawUI();
+      }
+
+      if (rightPressed && historyCount > 0) {
+        logDetailMode = true;
+        drawUI();
+      } else if (leftPressed && logDetailMode) {
+        logDetailMode = false;
+        drawUI();
+      }
+      break;
+
+        case MODE_SETTINGS: {
+      const int visibleLines = 5;
+
+      if (upPressed) {
+        if (settingsIndex == 0) {
+          // En üstteyken yukarı basınca en alta sar
+          settingsIndex = SETTINGS_COUNT - 1;
+          settingsTopIndex = max(0, SETTINGS_COUNT - visibleLines);
+        } else {
+          settingsIndex--;
+          if (settingsIndex < settingsTopIndex) {
+            settingsTopIndex = settingsIndex;
+          }
+        }
+        drawUI();
+      }
+      else if (downPressed) {
+        if (settingsIndex == SETTINGS_COUNT - 1) {
+          // En alttayken aşağı basınca en üste sar
+          settingsIndex = 0;
+          settingsTopIndex = 0;
+        } else {
+          settingsIndex++;
+          if (settingsIndex > settingsTopIndex + visibleLines - 1) {
+            settingsTopIndex = settingsIndex - (visibleLines - 1);
+          }
+        }
+        drawUI();
+      }
+
+      // alttaki left/right + changed/saveSettings kısmı aynen devam
+
+
+      if (leftPressed || rightPressed) {
+        bool changed = false;
+
+        if (settingsIndex == 0) {         // Ses
+          buzzerEnabled = !buzzerEnabled;
+          changed = true;
+          drawUI();
+        } else if (settingsIndex == 1) {  // Zil
+          int delta = rightPressed ? 1 : -1;
+          buzzerPattern += delta;
+          if (buzzerPattern < 0) buzzerPattern = 2;
+          if (buzzerPattern > 2) buzzerPattern = 0;
+          changed = true;
+          requestBeep();
+          drawUI();
+        } else if (settingsIndex == 2) {  // Parlaklık
+          if (leftPressed && brightnessLevel > 0) {
+            brightnessLevel--;
+            changed = true;
+          } else if (rightPressed && brightnessLevel < 2) {
+            brightnessLevel++;
+            changed = true;
+          }
+          applyBrightness();
+          drawUI();
+        } else if (settingsIndex == 3) {  // WiFi Gücü
+          wifiPowerMode = 1 - wifiPowerMode;
+          applyWifiPower();
+          changed = true;
+          drawUI();
+        } else if (settingsIndex == 4) {  // Dil
+          languageMode = 1 - languageMode;
+          changed = true;
+          drawUI();
+        }
+
+        if (changed) {
+          saveSettings();
+        }
+      }
+      break;
+    }
+
+    case MODE_CLOCK:
+      break;
+
+    case MODE_GAME:
+      if (upPressed && snakeDirY != 1) {
+        snakeDirX = 0;
+        snakeDirY = -1;
+      } else if (downPressed && snakeDirY != -1) {
+        snakeDirX = 0;
+        snakeDirY = 1;
+      } else if (leftPressed && snakeDirX != 1) {
+        snakeDirX = -1;
+        snakeDirY = 0;
+      } else if (rightPressed && snakeDirX != -1) {
+        snakeDirX = 1;
+        snakeDirY = 0;
+      }
+
+      if (buttonPressedPin(PIN_OK) && gameOver) {
+        resetGame();
+      }
+      break;
+
+        case MODE_SELECT:
+      if (upPressed) {
+        // En üstten yukarıya basınca en alta sar
+        if (modeSelectIndex == 0) {
+          modeSelectIndex = MODE_COUNT - 1;
+        } else {
+          modeSelectIndex--;
+        }
+        drawUI();
+      }
+      else if (downPressed) {
+        // En alttan aşağıya basınca en üste sar
+        if (modeSelectIndex == MODE_COUNT - 1) {
+          modeSelectIndex = 0;
+        } else {
+          modeSelectIndex++;
+        }
+        drawUI();
+      }
+
+      if (buttonPressedPin(PIN_OK)) {
+        currentMode = (UIMode)modeSelectIndex;
+        if (currentMode == MODE_LOG) {
+          logOffset = 0;
+          logDetailMode = false;
+        } else if (currentMode == MODE_GAME) {
+          resetGame();
+        }
+        drawUI();
+      }
+      break;
+
+  }
+
+  if (currentMode == MODE_COMPOSE) {
+    int okIdx = pinIndex(PIN_OK);
+    int okRaw = digitalRead(PIN_OK);
+
+    if (okIdx >= 0) {
+      if (okRaw == LOW && !okDown) {
+        unsigned long now = millis();
+        if (now - lastPressTime[okIdx] > DEBOUNCE_MS) {
+          okDown = true;
+          okDownTime = now;
+          lastPressTime[okIdx] = now;
+        }
+      }
+
+      if (okRaw == HIGH && okDown) {
+        unsigned long dur = millis() - okDownTime;
+        char k = useAltKeyboard ? altKeys[cy][cx] : keys[cy][cx];
+
+        if (k == '<') {
+          if (dur < OK_HOLD_MS) {
+            if (typedMsg.length() > 0) typedMsg.remove(typedMsg.length()-1);
+          } else {
+            if (typedMsg.length() < 200) typedMsg += ' ';
+          }
+        } else if (k == '@') {
+          if (dur < OK_HOLD_MS) {
+            String msgText = typedMsg.length() ? typedMsg : "(empty)";
+            String payload = String("N:") + DEVICE_NAME + "|M:" + msgText;
+
+            webSocket.broadcastTXT(payload);
+
+            String dispText = normalizeTurkish(msgText);
+            addMessageToHistory(dispText, false, normalizeTurkish(DEVICE_NAME));
+
+            Serial.printf("Device broadcast: %s\n", msgText.c_str());
+            typedMsg = "";
+          } else {
+            useAltKeyboard = !useAltKeyboard;
+          }
+        } else {
+          char ch = k;
+          if (isalpha((unsigned char)k)) {
+            if (dur < OK_HOLD_MS) {
+              ch = (char)tolower((unsigned char)k);
+            } else {
+              ch = k;
+            }
+          }
+          if (typedMsg.length() < 200) {
+            typedMsg += ch;
+          }
+        }
+
+        okDown = false;
+        drawUI();
+      }
+    }
+  }
+
+  delay(20);
+}
+
+
+
