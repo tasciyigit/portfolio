@@ -359,6 +359,18 @@ code {
 }
 
 /* Yeni Eklenen Buton Stilleri */
+.nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 22px;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
 .header-buttons {
     margin-top: 20px;
     display: flex;
@@ -372,12 +384,8 @@ code {
     background-color: transparent;
     color: #00d2be;
     border: 2px solid #00d2be;
-    padding: 10px 25px;
-    border-radius: 5px;
-    text-decoration: none;
-    font-weight: bold;
     transition: all 0.3s;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
 }
 
 .header-buttons .nav-btn:hover {
@@ -520,6 +528,8 @@ code {
     color: #121212 !important;
     /* nav-btn'den gelen override */
     border: none;
+    font-size: 1.05rem;
+    padding: 12px 20px;
 }
 
 .download-btn:hover {
