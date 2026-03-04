@@ -63,9 +63,9 @@
                     <div class="split-side windows-side">
                         <div class="os-icon"><i class="fab fa-windows"></i></div>
                         <h4>Windows</h4>
-                        <a href="https://github.com/tasciyigit/portfolio/releases/download/v1.0.0/YTdownloader_Setup.exe"
-                            class="nav-btn download-btn" download>En son sürümü indir
-                            (v1.0) <i class="fas fa-download"></i></a>
+                        <button class="nav-btn download-btn"
+                            onclick="closeModal('modal-app-1'); openModal('modal-win-warning')">En son sürümü indir
+                            (v1.0) <i class="fas fa-download"></i></button>
                     </div>
 
                     <!-- Mac Side -->
@@ -92,14 +92,12 @@
             <div class="project-detail-section" style="border-bottom: none;">
                 <p><strong>Uygulamayı açarken "Tanınmayan Geliştirici" uyarısı alabilirsiniz.</strong></p>
                 <p style="margin-top: 10px; font-size: 0.95rem; color: #ccc;">
-                    Apple, geliştirici hesabı için yıllık yüksek ücretler talep etmektedir. Bu uygulama ücretsiz ve açık
-                    kaynak
-                    bir proje olduğu için bu ücreti ödemedik. Bu nedenle Apple, uygulamayı "Tanınmayan Geliştirici"
-                    olarak
-                    işaretleyebilir.
+                    Apple, geliştirici sertifikaları için yüksek ücretler talep etmektedir. Bizim gibi bağımsız
+                    geliştiriciler bu ücretleri ödemediğinde, Apple uygulamayı "Tanınmayan Geliştirici" olarak
+                    işaretleyerek dışlamakta ve virüslüymüş gibi şüphe uyandırmaktadır.
                 </p>
-                <p style="margin-top: 10px; color: #00d2be;"><strong>Bu, uygulamanın güvensiz olduğu anlamına
-                        gelmez!</strong></p>
+                <p style="margin-top: 10px; color: #00d2be;"><strong>Uygulama tamamen açık kaynaklıdır ve kesinlikle
+                        virüslü veya güvensiz değildir!</strong></p>
 
                 <div
                     style="background: #252525; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: left;">
@@ -115,6 +113,45 @@
                 <div style="margin-top: 25px; text-align: center;">
                     <a href="https://github.com/tasciyigit/yigit-nfc/releases/download/v1.0.0/YTdownloader.Installer.dmg"
                         class="nav-btn" style="background-color: #ffcc00; color: #000; border: none; font-weight: bold;"
+                        download>
+                        Anladım, İndirmeyi Başlat <i class="fas fa-download"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Windows Warning Modal -->
+    <div id="modal-win-warning" class="modal">
+        <div class="modal-content" style="max-width: 600px; border-color: #00adef;">
+            <span class="close-btn" onclick="closeModal('modal-win-warning')">&times;</span>
+            <h2 style="color: #00adef;"><i class="fas fa-shield-alt"></i> Windows Kullanıcılarının Dikkatine</h2>
+
+            <div class="project-detail-section" style="border-bottom: none;">
+                <p><strong>Uygulamayı açarken "Windows kişisel bilgisayarınızı korudu" şeklinde bir SmartScreen uyarısı
+                        alabilirsiniz.</strong></p>
+                <p style="margin-top: 10px; font-size: 0.95rem; color: #ccc;">
+                    Microsoft, geliştirici sertifikaları için yüksek ücretler talep etmektedir. Bizim gibi bağımsız
+                    geliştiriciler bu ücretleri ödemediğinde, Windows Defender SmartScreen uygulamayı "Tanınmayan
+                    Uygulama" olarak işaretleyerek başlatılmasını engeller ve virüslüymüş gibi şüphe uyandırır.
+                </p>
+                <p style="margin-top: 10px; color: #00adef;"><strong>Uygulama tamamen açık kaynaklıdır ve kesinlikle
+                        virüslü veya güvensiz değildir!</strong></p>
+
+                <div
+                    style="background: #252525; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: left;">
+                    <h4 style="margin-bottom: 10px; color: #fff;">Nasıl Açılır?</h4>
+                    <ol style="margin-left: 20px; color: #aaa;">
+                        <li>İndirdiğiniz <strong>.exe</strong> dosyasını çalıştırın.</li>
+                        <li>Ekrana "Windows kişisel bilgisayarınızı korudu" şeklinde mavi bir uyarı gelecektir.</li>
+                        <li>Bu ekranda sol üstteki <strong>"Ek bilgi"</strong> yazısına tıklayın.</li>
+                        <li>Ardından sağ altta beliren <strong>"Yine de çalıştır"</strong> butonuna tıklayın.</li>
+                    </ol>
+                </div>
+
+                <div style="margin-top: 25px; text-align: center;">
+                    <a href="https://github.com/tasciyigit/portfolio/releases/download/v1.0.0/YTdownloader_Setup.exe"
+                        class="nav-btn" style="background-color: #00adef; color: #fff; border: none; font-weight: bold;"
                         download>
                         Anladım, İndirmeyi Başlat <i class="fas fa-download"></i>
                     </a>
