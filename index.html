@@ -35,6 +35,13 @@
 
       <div class="projects-grid">
 
+        <div class="project-card" onclick="openModal('modal-wifi-jammer')">
+          <div class="card-icon"><i class="fas fa-ban"></i></div>
+          <h3>Wi-Fi Sinyal Kesici</h3>
+          <p>Seçilen ağa deauth paketleri yollayarak bağlantıları koparan siber güvenlik projesi.</p>
+          <button class="details-btn">Projeyi İncele <i class="fas fa-arrow-right"></i></button>
+        </div>
+
         <div class="project-card" onclick="openModal('modal-wifi-msg')">
           <div class="card-icon"><i class="fas fa-wifi"></i></div>
           <h3>Internetsiz Mesajlaşma Cihazı</h3>
@@ -48,6 +55,7 @@
           <p>Brute-force mantığı ile şifre kırma algoritması demosu.</p>
           <button class="details-btn">Projeyi İncele <i class="fas fa-arrow-right"></i></button>
         </div>
+
         <div class="project-card" onclick="openModal('modal-5')">
           <div class="card-icon"><i class="fas fa-robot"></i></div>
           <h3>Şifreli bomba (C++)</h3>
@@ -504,6 +512,36 @@ void sureBelirleEkrani() {
 // Tüm C++ kodunu "internetsiz_mesajlasma.cpp.txt" dosyasına koy.
 // Site bu dosyayı otomatik okuyup burada düzgün formatta gösterecek.
         </code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-wifi-jammer" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('modal-wifi-jammer')">&times;</span>
+      <h2>Wi-Fi Sinyal Kesici (Deauther)</h2>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-bullseye"></i> Çalışma Mantığı</h3>
+        <p>Bu proje, bir donanımın doğrudan hedef olarak seçilen bir Wi-Fi ağına (örneğin modem) sürekli olarak <strong>Deauthentication (Kimlik doğrulama iptali)</strong> paketleri göndererek ağ trafiğine aşırı yüklenmesini ve ağı "patlatmasını" konu alır.</p>
+        <p>Normalde modem ve ona bağlı cihazlar sürekli haberleşerek bağlantıyı canlı tutar. Bu cihaz ise araya girip, modemin ağzından cihazlara "bağlantıyı kes" komutu yollar. Sonuç olarak modemin kafası karışır ve ağa bağlı olan tüm cihazların (telefon, bilgisayar, televizyon vb.) interneti kesilir. Hedef ağa yeniden bağlanmaya çalışıldığında ise sürekli hata vererek atar; kısacası cihaz ben kapatana kadar hedef Wi-Fi ağı hiçbir şekilde kullanılamaz hale gelir.</p>
+      </div>
+
+      <div class="project-detail-section">
+        <h3><i class="fas fa-video"></i> Video</h3>
+        <div class="video-container">
+          <video controls>
+            <source src="https://github.com/tasciyigit/portfolio/releases/download/v1.0.0/sinyalkesici.mp4" type="video/mp4">
+            Tarayıcınız video etiketini desteklemiyor.
+          </video>
+        </div>
+      </div>
+
+      <div class="project-detail-section warning-section" style="background-color: rgba(255, 60, 60, 0.1); border-left: 4px solid #ff3c3c; padding: 15px; border-radius: 5px;">
+        <h3 style="color: #ff3c3c; margin-top: 0;"><i class="fas fa-exclamation-triangle"></i> Yasal Uyarı ve Sorumluluk Reddi</h3>
+        <p><strong>Bu proje tamamen eğitim amaçlı ve siber güvenlik farkındalığı yaratmak için geliştirilmiştir.</strong></p>
+        <p>Bir başkasının Wi-Fi ağına sahibinin izni olmadan müdahale etmek, bağlantıları kesmek, engellemek veya sistemi erişilmez kılmak <strong>ciddi bir siber suçtur</strong>. Türk Ceza Kanunu'na (ve evrensel hukuk kurallarına) göre bilişim sistemini engelleme veya bozma suçları ağır hapis ve adli para cezaları ile sonuçlanabilmektedir.</p>
+        <p><em>Kötüye kullanım riskinden dolayı bu projenin kaynak kodları kesinlikle paylaşılmamaktadır.</em> Lütfen bu tür cihazları ve bilgileri sadece kendi ağlarınızda, kendi sistemlerinizin güvenliğini test etmek amacıyla yasal sınırlar çerçevesinde kullanınız.</p>
       </div>
     </div>
   </div>
